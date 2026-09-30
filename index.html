@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photo Gallery Builder – Générateur de galerie</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f0f12;
+      --surface: #1a1a20;
+      --surface2: #24242c;
+      --border: #2e2e38;
+      --text: #e8e8ed;
+      --muted: #8b8b9a;
+      --accent: #6c5ce7;
+      --accent-hover: #7f71ef;
+      --success: #00b894;
+      --danger: #ff6b6b;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    header {
+      padding: 1.5rem 1.5rem 0.5rem;
+      text-align: center;
+    }
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    header p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-top: 0.35rem;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1.25rem 1.25rem 3rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+    @media (max-width: 800px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+    }
+    .card h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .card h2 .step {
+      background: var(--accent);
+      color: #fff;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      font-size: 0.75rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* Drop zone */
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 2rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      background: var(--surface2);
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--accent);
+      background: rgba(108, 92, 231, 0.08);
+    }
+    .dropzone input { display: none; }
+    .dropzone .icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .dropzone p { color: var(--muted); font-size: 0.9rem; }
+    .dropzone strong { color: var(--text); }
+
+    /* Photo list */
+    .photo-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 1rem;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .photo-item {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 2px solid var(--border);
+      background: #111;
+    }
+    .photo-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .photo-item .name {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(0,0,0,0.7);
+      font-size: 0.55rem;
+      padding: 2px 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .photo-item .remove {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      width: 18px;
+      height: 18px;
+      border: none;
+      border-radius: 50%;
+      background: var(--danger);
+      color: #fff;
+      font-size: 0.7rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .photo-item:hover .remove { opacity: 1; }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+    button, .btn {
+      appearance: none;
+      border: none;
+      border-radius: 8px;
+      padding: 0.65rem 1.1rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    button:active { transform: scale(0.97); }
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-success {
+      background: var(--success);
+      color: #fff;
+    }
+    .btn-success:hover:not(:disabled) { background: #00a381; }
+    .btn-ghost {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover:not(:disabled) { background: #2c2c36; }
+    .btn-danger {
+      background: transparent;
+      color: var(--danger);
+      border: 1px solid var(--danger);
+    }
+
+    /* Preview */
+    #preview-area {
+      min-height: 200px;
+    }
+    #preview-area .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 2.5rem 1rem;
+      font-size: 0.9rem;
+    }
+    #gallery-preview {
+      width: 100%;
+    }
+
+    /* Code block */
+    .code-wrap {
+      position: relative;
+    }
+    .code-wrap pre {
+      background: #121218;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-size: 0.78rem;
+      line-height: 1.45;
+      max-height: 280px;
+      color: #c8c8d0;
+    }
+    .code-wrap .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.75rem;
+    }
+
+    .status {
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      min-height: 1.3em;
+    }
+    .status.ok { color: var(--success); }
+    .status.err { color: var(--danger); }
+
+    .full-width { grid-column: 1 / -1; }
+
+    .options-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.85rem;
+    }
+    .options-row label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: var(--muted);
+    }
+    .options-row input[type="text"],
+    .options-row input[type="number"] {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 0.35rem 0.5rem;
+      font-size: 0.85rem;
+      width: 100px;
+    }
+    .options-row input[type="text"] { width: 140px; }
+
+    footer {
+      text-align: center;
+      padding: 1rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📸 Photo Gallery Builder</h1>
+    <p>Uploadez vos photos → miniatures auto → aperçu → code + ZIP à télécharger</p>
+  </header>
+
+  <div class="container">
+    <div class="grid">
+      <!-- Step 1: Upload -->
+      <div class="card">
+        <h2><span class="step">1</span> Importer les photos</h2>
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept="image/*" multiple>
+          <div class="icon">📁</div>
+          <p><strong>Glissez-déposez</strong> vos images ici<br>ou cliquez pour sélectionner</p>
+        </div>
+        <div class="photo-list" id="photoList"></div>
+        <div class="actions">
+          <button type="button" class="btn-ghost" id="btnClear" disabled>Tout effacer</button>
+        </div>
+        <p class="status" id="uploadStatus"></p>
+      </div>
+
+      <!-- Step 2: Options + Generate -->
+      <div class="card">
+        <h2><span class="step">2</span> Options & génération</h2>
+        <div class="options-row">
+          <label>Taille thumbs
+            <input type="number" id="thumbSize" value="150" min="60" max="300" step="10">
+            px
+          </label>
+          <label>Qualité JPEG
+            <input type="number" id="jpegQuality" value="0.85" min="0.5" max="1" step="0.05">
+          </label>
+          <label>Préfixe nom
+            <input type="text" id="namePrefix" value="photo" placeholder="photo">
+          </label>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn-primary" id="btnGenerate" disabled>
+            ⚡ Générer thumbs + aperçu
+          </button>
+          <button type="button" class="btn-success" id="btnZip" disabled>
+            📦 Télécharger le ZIP
+          </button>
+        </div>
+        <p class="status" id="genStatus"></p>
+      </div>
+
+      <!-- Step 3: Preview -->
+      <div class="card full-width">
+        <h2><span class="step">3</span> Aperçu de la galerie</h2>
+        <div id="preview-area">
+          <p class="empty">Importez des photos puis cliquez sur « Générer » pour voir l’aperçu.</p>
+        </div>
+      </div>
+
+      <!-- Step 4: Code -->
+      <div class="card full-width">
+        <h2><span class="step">4</span> Code à copier dans votre site</h2>
+        <div class="code-wrap">
+          <button type="button" class="btn-ghost copy-btn" id="btnCopy">Copier</button>
+          <pre id="codeOutput"><code>// Le code apparaîtra ici après génération…</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    100 % navigateur · aucune donnée envoyée sur un serveur · JSZip
+  </footer>
+
+  <!-- Gallery CSS injected for preview -->
+  <div id="gallery-css-host"></div>
+
+  <script>
+/* ============================================================
+   Embedded gallery assets (from photo-gallery project)
+   ============================================================ */
+window.__GALLERY_CSS = "/* ============================================\n   Photo Gallery Slide - Standalone CSS\n   Import: <link rel=\"stylesheet\" href=\"css/gallery.css\">\n   ============================================ */\n\n:root {\n  --gallery-bg: #0d0d0d;\n  --gallery-accent: #ffffff;\n  --gallery-muted: #888;\n  --gallery-overlay: rgba(0, 0, 0, 0.92);\n  --thumb-size: 72px;\n  --thumb-gap: 8px;\n  --transition: 0.35s cubic-bezier(0.4, 0, 0.2, 1);\n  --nav-size: 48px;\n}\n\n/* Reset isol\u00e9 pour la galerie */\n.pg-gallery *,\n.pg-gallery *::before,\n.pg-gallery *::after {\n  box-sizing: border-box;\n  margin: 0;\n  padding: 0;\n}\n\n.pg-gallery {\n  position: relative;\n  width: 100%;\n  max-width: 1200px;\n  margin: 0 auto;\n  background: var(--gallery-bg);\n  border-radius: 12px;\n  overflow: hidden;\n  font-family: system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif;\n  user-select: none;\n  -webkit-user-select: none;\n}\n\n/* ---- Main slide ---- */\n.pg-main {\n  position: relative;\n  width: 100%;\n  aspect-ratio: 16 / 10;\n  background: #111;\n  overflow: hidden;\n}\n\n.pg-slides {\n  display: flex;\n  height: 100%;\n  transition: transform var(--transition);\n  will-change: transform;\n}\n\n.pg-slide {\n  flex: 0 0 100%;\n  height: 100%;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  background: #111;\n}\n\n.pg-slide img {\n  max-width: 100%;\n  max-height: 100%;\n  width: auto;\n  height: auto;\n  object-fit: contain;\n  display: block;\n  cursor: zoom-in;\n  transition: opacity 0.2s ease;\n}\n\n.pg-slide img:hover {\n  opacity: 0.95;\n}\n\n/* ---- Navigation arrows ---- */\n.pg-nav {\n  position: absolute;\n  top: 50%;\n  transform: translateY(-50%);\n  width: var(--nav-size);\n  height: var(--nav-size);\n  border: none;\n  border-radius: 50%;\n  background: rgba(255, 255, 255, 0.12);\n  color: var(--gallery-accent);\n  font-size: 1.4rem;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  transition: background 0.2s ease, transform 0.15s ease;\n  z-index: 10;\n  backdrop-filter: blur(6px);\n  -webkit-backdrop-filter: blur(6px);\n}\n\n.pg-nav:hover {\n  background: rgba(255, 255, 255, 0.25);\n  transform: translateY(-50%) scale(1.08);\n}\n\n.pg-nav:active {\n  transform: translateY(-50%) scale(0.95);\n}\n\n.pg-nav:disabled {\n  opacity: 0.25;\n  cursor: default;\n  pointer-events: none;\n}\n\n.pg-nav-prev {\n  left: 12px;\n}\n\n.pg-nav-next {\n  right: 12px;\n}\n\n/* ---- Counter ---- */\n.pg-counter {\n  position: absolute;\n  top: 14px;\n  right: 16px;\n  background: rgba(0, 0, 0, 0.55);\n  color: var(--gallery-accent);\n  font-size: 0.8rem;\n  font-weight: 500;\n  padding: 4px 10px;\n  border-radius: 20px;\n  letter-spacing: 0.03em;\n  z-index: 10;\n  backdrop-filter: blur(4px);\n}\n\n/* ---- Thumbnails strip ---- */\n.pg-thumbs-wrap {\n  position: relative;\n  background: #161616;\n  padding: 12px 0;\n  border-top: 1px solid #222;\n}\n\n.pg-thumbs {\n  display: flex;\n  gap: var(--thumb-gap);\n  overflow-x: auto;\n  overflow-y: hidden;\n  scroll-behavior: smooth;\n  padding: 0 16px;\n  scrollbar-width: thin;\n  scrollbar-color: #444 transparent;\n  -webkit-overflow-scrolling: touch;\n}\n\n.pg-thumbs::-webkit-scrollbar {\n  height: 5px;\n}\n\n.pg-thumbs::-webkit-scrollbar-track {\n  background: transparent;\n}\n\n.pg-thumbs::-webkit-scrollbar-thumb {\n  background: #444;\n  border-radius: 3px;\n}\n\n.pg-thumb {\n  flex: 0 0 var(--thumb-size);\n  width: var(--thumb-size);\n  height: var(--thumb-size);\n  border-radius: 6px;\n  overflow: hidden;\n  cursor: pointer;\n  border: 2px solid transparent;\n  opacity: 0.55;\n  transition: opacity 0.2s ease, border-color 0.2s ease, transform 0.15s ease;\n  background: #222;\n}\n\n.pg-thumb img {\n  width: 100%;\n  height: 100%;\n  object-fit: cover;\n  display: block;\n  pointer-events: none;\n}\n\n.pg-thumb:hover {\n  opacity: 0.85;\n  transform: scale(1.04);\n}\n\n.pg-thumb.active {\n  opacity: 1;\n  border-color: var(--gallery-accent);\n  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);\n}\n\n/* ---- Lightbox / fullscreen ---- */\n.pg-lightbox {\n  position: fixed;\n  inset: 0;\n  z-index: 99999;\n  background: var(--gallery-overlay);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  opacity: 0;\n  visibility: hidden;\n  transition: opacity 0.3s ease, visibility 0.3s ease;\n  cursor: grab;\n}\n\n.pg-lightbox.open {\n  opacity: 1;\n  visibility: visible;\n}\n\n.pg-lightbox.grabbing {\n  cursor: grabbing;\n}\n\n.pg-lightbox-inner {\n  position: relative;\n  max-width: 95vw;\n  max-height: 95vh;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  transform-origin: center center;\n  transition: transform 0.05s linear;\n}\n\n.pg-lightbox-inner img {\n  max-width: 95vw;\n  max-height: 90vh;\n  width: auto;\n  height: auto;\n  object-fit: contain;\n  border-radius: 4px;\n  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);\n  user-select: none;\n  -webkit-user-drag: none;\n  pointer-events: none;\n}\n\n/* Zoom controls */\n.pg-lb-controls {\n  position: absolute;\n  bottom: 24px;\n  left: 50%;\n  transform: translateX(-50%);\n  display: flex;\n  gap: 10px;\n  z-index: 10;\n}\n\n.pg-lb-btn {\n  width: 44px;\n  height: 44px;\n  border: none;\n  border-radius: 50%;\n  background: rgba(255, 255, 255, 0.15);\n  color: #fff;\n  font-size: 1.25rem;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  backdrop-filter: blur(8px);\n  transition: background 0.2s ease;\n}\n\n.pg-lb-btn:hover {\n  background: rgba(255, 255, 255, 0.3);\n}\n\n.pg-lb-close {\n  position: absolute;\n  top: 20px;\n  right: 20px;\n  width: 48px;\n  height: 48px;\n  border: none;\n  border-radius: 50%;\n  background: rgba(255, 255, 255, 0.12);\n  color: #fff;\n  font-size: 1.5rem;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 10;\n  backdrop-filter: blur(6px);\n  transition: background 0.2s ease;\n}\n\n.pg-lb-close:hover {\n  background: rgba(255, 255, 255, 0.3);\n}\n\n.pg-lb-nav {\n  position: absolute;\n  top: 50%;\n  transform: translateY(-50%);\n  width: 52px;\n  height: 52px;\n  border: none;\n  border-radius: 50%;\n  background: rgba(255, 255, 255, 0.12);\n  color: #fff;\n  font-size: 1.5rem;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 10;\n  backdrop-filter: blur(6px);\n  transition: background 0.2s ease;\n}\n\n.pg-lb-nav:hover {\n  background: rgba(255, 255, 255, 0.28);\n}\n\n.pg-lb-prev {\n  left: 20px;\n}\n\n.pg-lb-next {\n  right: 20px;\n}\n\n.pg-lb-counter {\n  position: absolute;\n  top: 24px;\n  left: 50%;\n  transform: translateX(-50%);\n  color: rgba(255, 255, 255, 0.8);\n  font-size: 0.9rem;\n  letter-spacing: 0.04em;\n  z-index: 10;\n}\n\n/* Zoom level indicator */\n.pg-lb-zoom-level {\n  position: absolute;\n  top: 24px;\n  left: 24px;\n  color: rgba(255, 255, 255, 0.7);\n  font-size: 0.8rem;\n  background: rgba(0, 0, 0, 0.4);\n  padding: 4px 10px;\n  border-radius: 12px;\n  z-index: 10;\n}\n\n/* Responsive */\n@media (max-width: 640px) {\n  :root {\n    --thumb-size: 56px;\n    --nav-size: 40px;\n  }\n\n  .pg-main {\n    aspect-ratio: 4 / 3;\n  }\n\n  .pg-nav-prev {\n    left: 8px;\n  }\n\n  .pg-nav-next {\n    right: 8px;\n  }\n\n  .pg-lb-prev {\n    left: 8px;\n  }\n\n  .pg-lb-next {\n    right: 8px;\n  }\n\n  .pg-lb-close {\n    top: 12px;\n    right: 12px;\n    width: 40px;\n    height: 40px;\n  }\n}\n";
+window.__GALLERY_JS = "/**\n * Photo Gallery Slide - Standalone JS\n * Usage:\n *   <div id=\"my-gallery\" class=\"pg-gallery\" data-photos='[\"photo1.jpg\",\"photo2.jpg\"]'></div>\n *   or configure via PhotoGallery.init({ container: '#my-gallery', photos: [...] })\n *\n * Photos path: /photos/\n * Thumbs path: /photos/thumbs/\n */\n\n(function (window) {\n  \"use strict\";\n\n  const DEFAULTS = {\n    photosPath: \"photos/\",\n    thumbsPath: \"photos/thumbs/\",\n    // list of filenames (without path)\n    photos: [],\n  };\n\n  class PhotoGallery {\n    constructor(container, options = {}) {\n      this.el = typeof container === \"string\" ? document.querySelector(container) : container;\n      if (!this.el) {\n        console.error(\"[PhotoGallery] Container not found\");\n        return;\n      }\n\n      this.opts = { ...DEFAULTS, ...options };\n\n      // Allow data-photos attribute: data-photos='[\"a.jpg\",\"b.jpg\"]'\n      if (this.el.dataset.photos) {\n        try {\n          this.opts.photos = JSON.parse(this.el.dataset.photos);\n        } catch (e) {\n          console.warn(\"[PhotoGallery] Invalid data-photos JSON\");\n        }\n      }\n\n      this.photos = this.opts.photos.filter(Boolean);\n      this.current = 0;\n      this.zoom = 1;\n      this.minZoom = 1;\n      this.maxZoom = 4;\n      this.isDragging = false;\n      this.startX = 0;\n      this.startY = 0;\n      this.translateX = 0;\n      this.translateY = 0;\n\n      if (this.photos.length === 0) {\n        this.el.innerHTML = '<p style=\"color:#888;padding:2rem;text-align:center;\">Aucune photo</p>';\n        return;\n      }\n\n      this._build();\n      this._bind();\n      this.goTo(0);\n    }\n\n    /* ---------- DOM construction ---------- */\n    _build() {\n      this.el.innerHTML = \"\";\n      this.el.classList.add(\"pg-gallery\");\n\n      // Main area\n      const main = document.createElement(\"div\");\n      main.className = \"pg-main\";\n\n      this.slidesEl = document.createElement(\"div\");\n      this.slidesEl.className = \"pg-slides\";\n\n      this.photos.forEach((name, i) => {\n        const slide = document.createElement(\"div\");\n        slide.className = \"pg-slide\";\n        const img = document.createElement(\"img\");\n        img.src = this.opts.photosPath + name;\n        img.alt = `Photo ${i + 1}`;\n        img.loading = i === 0 ? \"eager\" : \"lazy\";\n        img.dataset.index = i;\n        slide.appendChild(img);\n        this.slidesEl.appendChild(slide);\n      });\n\n      main.appendChild(this.slidesEl);\n\n      // Nav buttons\n      this.prevBtn = document.createElement(\"button\");\n      this.prevBtn.className = \"pg-nav pg-nav-prev\";\n      this.prevBtn.setAttribute(\"aria-label\", \"Pr\u00e9c\u00e9dent\");\n      this.prevBtn.innerHTML = \"\u2039\";\n\n      this.nextBtn = document.createElement(\"button\");\n      this.nextBtn.className = \"pg-nav pg-nav-next\";\n      this.nextBtn.setAttribute(\"aria-label\", \"Suivant\");\n      this.nextBtn.innerHTML = \"\u203a\";\n\n      // Counter\n      this.counter = document.createElement(\"div\");\n      this.counter.className = \"pg-counter\";\n\n      main.appendChild(this.prevBtn);\n      main.appendChild(this.nextBtn);\n      main.appendChild(this.counter);\n      this.el.appendChild(main);\n\n      // Thumbnails\n      const thumbsWrap = document.createElement(\"div\");\n      thumbsWrap.className = \"pg-thumbs-wrap\";\n\n      this.thumbsEl = document.createElement(\"div\");\n      this.thumbsEl.className = \"pg-thumbs\";\n\n      this.photos.forEach((name, i) => {\n        const thumb = document.createElement(\"div\");\n        thumb.className = \"pg-thumb\";\n        thumb.dataset.index = i;\n        const img = document.createElement(\"img\");\n        img.src = this.opts.thumbsPath + name;\n        img.alt = `Miniature ${i + 1}`;\n        img.loading = \"lazy\";\n        thumb.appendChild(img);\n        this.thumbsEl.appendChild(thumb);\n      });\n\n      thumbsWrap.appendChild(this.thumbsEl);\n      this.el.appendChild(thumbsWrap);\n\n      // Lightbox (appended to body so it covers everything)\n      this.lightbox = document.createElement(\"div\");\n      this.lightbox.className = \"pg-lightbox\";\n      this.lightbox.innerHTML = `\n        <button class=\"pg-lb-close\" aria-label=\"Fermer\">\u00d7</button>\n        <div class=\"pg-lb-counter\"></div>\n        <div class=\"pg-lb-zoom-level\"></div>\n        <button class=\"pg-lb-nav pg-lb-prev\" aria-label=\"Pr\u00e9c\u00e9dent\">\u2039</button>\n        <button class=\"pg-lb-nav pg-lb-next\" aria-label=\"Suivant\">\u203a</button>\n        <div class=\"pg-lightbox-inner\">\n          <img src=\"\" alt=\"Photo agrandie\">\n        </div>\n        <div class=\"pg-lb-controls\">\n          <button class=\"pg-lb-btn pg-lb-zoom-out\" aria-label=\"Zoom arri\u00e8re\">\u2212</button>\n          <button class=\"pg-lb-btn pg-lb-zoom-in\" aria-label=\"Zoom avant\">+</button>\n          <button class=\"pg-lb-btn pg-lb-zoom-reset\" aria-label=\"R\u00e9initialiser\">\u27f2</button>\n        </div>\n      `;\n      document.body.appendChild(this.lightbox);\n\n      this.lbImg = this.lightbox.querySelector(\".pg-lightbox-inner img\");\n      this.lbInner = this.lightbox.querySelector(\".pg-lightbox-inner\");\n      this.lbCounter = this.lightbox.querySelector(\".pg-lb-counter\");\n      this.lbZoomLevel = this.lightbox.querySelector(\".pg-lb-zoom-level\");\n    }\n\n    /* ---------- Events ---------- */\n    _bind() {\n      // Main navigation\n      this.prevBtn.addEventListener(\"click\", () => this.prev());\n      this.nextBtn.addEventListener(\"click\", () => this.next());\n\n      // Click on main image \u2192 open lightbox\n      this.slidesEl.addEventListener(\"click\", (e) => {\n        const img = e.target.closest(\"img\");\n        if (img) this.openLightbox(parseInt(img.dataset.index, 10));\n      });\n\n      // Thumbnails\n      this.thumbsEl.addEventListener(\"click\", (e) => {\n        const thumb = e.target.closest(\".pg-thumb\");\n        if (thumb) this.goTo(parseInt(thumb.dataset.index, 10));\n      });\n\n      // Keyboard (when gallery is focused or lightbox open)\n      this._onKey = (e) => {\n        if (this.lightbox.classList.contains(\"open\")) {\n          if (e.key === \"Escape\") this.closeLightbox();\n          if (e.key === \"ArrowLeft\") this.lbPrev();\n          if (e.key === \"ArrowRight\") this.lbNext();\n          if (e.key === \"+\" || e.key === \"=\") this.zoomIn();\n          if (e.key === \"-\") this.zoomOut();\n          if (e.key === \"0\") this.zoomReset();\n        } else if (this.el.contains(document.activeElement) || this._isInViewport()) {\n          if (e.key === \"ArrowLeft\") this.prev();\n          if (e.key === \"ArrowRight\") this.next();\n        }\n      };\n      document.addEventListener(\"keydown\", this._onKey);\n\n      // Lightbox buttons\n      this.lightbox.querySelector(\".pg-lb-close\").addEventListener(\"click\", () => this.closeLightbox());\n      this.lightbox.querySelector(\".pg-lb-prev\").addEventListener(\"click\", () => this.lbPrev());\n      this.lightbox.querySelector(\".pg-lb-next\").addEventListener(\"click\", () => this.lbNext());\n      this.lightbox.querySelector(\".pg-lb-zoom-in\").addEventListener(\"click\", () => this.zoomIn());\n      this.lightbox.querySelector(\".pg-lb-zoom-out\").addEventListener(\"click\", () => this.zoomOut());\n      this.lightbox.querySelector(\".pg-lb-zoom-reset\").addEventListener(\"click\", () => this.zoomReset());\n\n      // Close on background click\n      this.lightbox.addEventListener(\"click\", (e) => {\n        if (e.target === this.lightbox) this.closeLightbox();\n      });\n\n      // Drag to pan when zoomed\n      this.lbInner.addEventListener(\"mousedown\", (e) => this._startDrag(e));\n      this.lbInner.addEventListener(\"touchstart\", (e) => this._startDrag(e), { passive: false });\n      document.addEventListener(\"mousemove\", (e) => this._onDrag(e));\n      document.addEventListener(\"touchmove\", (e) => this._onDrag(e), { passive: false });\n      document.addEventListener(\"mouseup\", () => this._endDrag());\n      document.addEventListener(\"touchend\", () => this._endDrag());\n\n      // Mouse wheel zoom in lightbox\n      this.lightbox.addEventListener(\n        \"wheel\",\n        (e) => {\n          if (!this.lightbox.classList.contains(\"open\")) return;\n          e.preventDefault();\n          if (e.deltaY < 0) this.zoomIn();\n          else this.zoomOut();\n        },\n        { passive: false }\n      );\n\n      // Touch swipe on main gallery\n      let touchStartX = 0;\n      this.slidesEl.addEventListener(\n        \"touchstart\",\n        (e) => {\n          touchStartX = e.changedTouches[0].screenX;\n        },\n        { passive: true }\n      );\n      this.slidesEl.addEventListener(\n        \"touchend\",\n        (e) => {\n          const diff = e.changedTouches[0].screenX - touchStartX;\n          if (Math.abs(diff) > 50) {\n            if (diff > 0) this.prev();\n            else this.next();\n          }\n        },\n        { passive: true }\n      );\n    }\n\n    _isInViewport() {\n      const rect = this.el.getBoundingClientRect();\n      return rect.top < window.innerHeight && rect.bottom > 0;\n    }\n\n    /* ---------- Navigation ---------- */\n    goTo(index) {\n      if (index < 0 || index >= this.photos.length) return;\n      this.current = index;\n      this.slidesEl.style.transform = `translateX(-${index * 100}%)`;\n\n      // Update counter\n      this.counter.textContent = `${index + 1} / ${this.photos.length}`;\n\n      // Update thumbs\n      this.thumbsEl.querySelectorAll(\".pg-thumb\").forEach((t, i) => {\n        t.classList.toggle(\"active\", i === index);\n      });\n\n      // Center active thumb\n      const activeThumb = this.thumbsEl.querySelector(\".pg-thumb.active\");\n      if (activeThumb) {\n        const wrap = this.thumbsEl;\n        const thumbLeft = activeThumb.offsetLeft;\n        const thumbW = activeThumb.offsetWidth;\n        const scrollTarget = thumbLeft - wrap.clientWidth / 2 + thumbW / 2;\n        wrap.scrollTo({ left: scrollTarget, behavior: \"smooth\" });\n      }\n\n      // Disable buttons at ends\n      this.prevBtn.disabled = index === 0;\n      this.nextBtn.disabled = index === this.photos.length - 1;\n    }\n\n    prev() {\n      this.goTo(this.current - 1);\n    }\n\n    next() {\n      this.goTo(this.current + 1);\n    }\n\n    /* ---------- Lightbox ---------- */\n    openLightbox(index) {\n      this.current = index;\n      this.zoom = 1;\n      this.translateX = 0;\n      this.translateY = 0;\n      this._updateLbImage();\n      this._applyZoom();\n      this.lightbox.classList.add(\"open\");\n      document.body.style.overflow = \"hidden\";\n    }\n\n    closeLightbox() {\n      this.lightbox.classList.remove(\"open\");\n      document.body.style.overflow = \"\";\n      this.zoom = 1;\n      this.translateX = 0;\n      this.translateY = 0;\n    }\n\n    lbPrev() {\n      if (this.current > 0) {\n        this.current--;\n        this.zoom = 1;\n        this.translateX = 0;\n        this.translateY = 0;\n        this._updateLbImage();\n        this._applyZoom();\n        this.goTo(this.current); // keep main gallery in sync\n      }\n    }\n\n    lbNext() {\n      if (this.current < this.photos.length - 1) {\n        this.current++;\n        this.zoom = 1;\n        this.translateX = 0;\n        this.translateY = 0;\n        this._updateLbImage();\n        this._applyZoom();\n        this.goTo(this.current);\n      }\n    }\n\n    _updateLbImage() {\n      const name = this.photos[this.current];\n      this.lbImg.src = this.opts.photosPath + name;\n      this.lbCounter.textContent = `${this.current + 1} / ${this.photos.length}`;\n    }\n\n    /* ---------- Zoom ---------- */\n    zoomIn() {\n      this.zoom = Math.min(this.maxZoom, +(this.zoom + 0.25).toFixed(2));\n      this._applyZoom();\n    }\n\n    zoomOut() {\n      this.zoom = Math.max(this.minZoom, +(this.zoom - 0.25).toFixed(2));\n      if (this.zoom === 1) {\n        this.translateX = 0;\n        this.translateY = 0;\n      }\n      this._applyZoom();\n    }\n\n    zoomReset() {\n      this.zoom = 1;\n      this.translateX = 0;\n      this.translateY = 0;\n      this._applyZoom();\n    }\n\n    _applyZoom() {\n      this.lbInner.style.transform = `translate(${this.translateX}px, ${this.translateY}px) scale(${this.zoom})`;\n      this.lbZoomLevel.textContent = `${Math.round(this.zoom * 100)}%`;\n    }\n\n    /* ---------- Drag / pan ---------- */\n    _startDrag(e) {\n      if (this.zoom <= 1) return;\n      this.isDragging = true;\n      this.lightbox.classList.add(\"grabbing\");\n      const point = e.touches ? e.touches[0] : e;\n      this.startX = point.clientX - this.translateX;\n      this.startY = point.clientY - this.translateY;\n      e.preventDefault();\n    }\n\n    _onDrag(e) {\n      if (!this.isDragging) return;\n      const point = e.touches ? e.touches[0] : e;\n      this.translateX = point.clientX - this.startX;\n      this.translateY = point.clientY - this.startY;\n      this._applyZoom();\n      e.preventDefault();\n    }\n\n    _endDrag() {\n      this.isDragging = false;\n      this.lightbox.classList.remove(\"grabbing\");\n    }\n\n    /* ---------- Public API ---------- */\n    destroy() {\n      document.removeEventListener(\"keydown\", this._onKey);\n      if (this.lightbox && this.lightbox.parentNode) {\n        this.lightbox.parentNode.removeChild(this.lightbox);\n      }\n      this.el.innerHTML = \"\";\n    }\n  }\n\n  // Static helper\n  PhotoGallery.init = function (options) {\n    const container = options.container || \".pg-gallery\";\n    const el = typeof container === \"string\" ? document.querySelector(container) : container;\n    return new PhotoGallery(el, options);\n  };\n\n  // Auto-init elements with class + data-photos\n  document.addEventListener(\"DOMContentLoaded\", () => {\n    document.querySelectorAll(\".pg-gallery[data-photos]\").forEach((el) => {\n      if (!el._pgInstance) {\n        el._pgInstance = new PhotoGallery(el);\n      }\n    });\n  });\n\n  window.PhotoGallery = PhotoGallery;\n})(window);\n";
+window.__GALLERY_README = "# Photo Gallery Slide\n\nGalerie photo moderne, l\u00e9g\u00e8re et **importable** dans n\u2019importe quel site web.\n\n- Navigation gauche / droite (boutons + clavier + swipe mobile)\n- Bandeau de miniatures d\u00e9filant en bas\n- Clic sur une photo \u2192 ouverture en grand (lightbox)\n- Zoom (boutons, molette, clavier `+` / `-`) + d\u00e9placement \u00e0 la souris / doigt\n- Fermeture (bouton \u00d7, clic fond, touche \u00c9chap)\n- Responsive\n\n## Structure des fichiers\n\n```\nphoto-gallery/\n\u251c\u2500\u2500 index.html          # D\u00e9mo\n\u251c\u2500\u2500 css/\n\u2502   \u2514\u2500\u2500 gallery.css\n\u251c\u2500\u2500 js/\n\u2502   \u2514\u2500\u2500 gallery.js\n\u2514\u2500\u2500 photos/\n    \u251c\u2500\u2500 photo1.jpg\n    \u251c\u2500\u2500 photo2.jpg\n    \u2514\u2500\u2500 thumbs/\n        \u251c\u2500\u2500 photo1.jpg\n        \u2514\u2500\u2500 photo2.jpg\n```\n\nLes **photos pleine r\u00e9solution** sont dans `/photos/`.  \nLes **miniatures** (m\u00eame nom de fichier) sont dans `/photos/thumbs/`.\n\n## Installation rapide\n\n1. Copiez les dossiers `css/`, `js/` et `photos/` dans votre projet.\n2. Dans votre page HTML :\n\n```html\n<link rel=\"stylesheet\" href=\"css/gallery.css\">\n\n<div\n  class=\"pg-gallery\"\n  data-photos='[\"photo1.jpg\",\"photo2.jpg\",\"photo3.jpg\"]'\n></div>\n\n<script src=\"js/gallery.js\"></script>\n```\n\nLa galerie s\u2019initialise automatiquement d\u00e8s qu\u2019un \u00e9l\u00e9ment `.pg-gallery` poss\u00e8de l\u2019attribut `data-photos`.\n\n## Initialisation manuelle (optionnel)\n\n```html\n<div id=\"ma-galerie\" class=\"pg-gallery\"></div>\n\n<script src=\"js/gallery.js\"></script>\n<script>\n  PhotoGallery.init({\n    container: '#ma-galerie',\n    photos: ['photo1.jpg', 'photo2.jpg', 'photo3.jpg'],\n    photosPath: 'photos/',       // chemin des images HD\n    thumbsPath: 'photos/thumbs/' // chemin des miniatures\n  });\n</script>\n```\n\n## API publique\n\n| M\u00e9thode              | Description                          |\n|----------------------|--------------------------------------|\n| `goTo(index)`        | Aller \u00e0 la photo n\u00b0 `index`          |\n| `prev()` / `next()`  | Photo pr\u00e9c\u00e9dente / suivante          |\n| `openLightbox(i)`    | Ouvrir le lightbox sur la photo `i`  |\n| `closeLightbox()`    | Fermer le lightbox                   |\n| `destroy()`          | Nettoyer et supprimer la galerie     |\n\n```js\nconst gallery = PhotoGallery.init({ container: '#ma-galerie', photos: [...] });\ngallery.goTo(2);\n```\n\n## Raccourcis clavier\n\n| Touche        | Action (galerie)     | Action (lightbox)      |\n|---------------|----------------------|------------------------|\n| `\u2190` `\u2192`       | Pr\u00e9c\u00e9dent / Suivant  | Pr\u00e9c\u00e9dent / Suivant    |\n| `\u00c9chap`       | \u2014                    | Fermer                 |\n| `+` / `-`     | \u2014                    | Zoom avant / arri\u00e8re   |\n| `0`           | \u2014                    | R\u00e9initialiser le zoom  |\n\n## Personnalisation CSS\n\nLes variables CSS en t\u00eate de `gallery.css` permettent de modifier rapidement l\u2019apparence :\n\n```css\n:root {\n  --gallery-bg: #0d0d0d;\n  --gallery-accent: #ffffff;\n  --thumb-size: 72px;\n  --nav-size: 48px;\n}\n```\n\n## G\u00e9n\u00e9rer les miniatures\n\nExemple avec ImageMagick :\n\n```bash\nmkdir -p photos/thumbs\nfor f in photos/*.{jpg,jpeg,png,webp}; do\n  [ -f \"$f\" ] || continue\n  convert \"$f\" -resize 150x150^ -gravity center -extent 150x150 \"photos/thumbs/$(basename \"$f\")\"\ndone\n```\n\nOu avec `ffmpeg` / tout autre outil de redimensionnement.\n\n## Licence\n\nMIT \u2013 libre d\u2019utilisation, modification et redistribution.\n";
+  </script>
+
+  <script>
+(function () {
+  "use strict";
+
+  // ---- State ----
+  let files = [];          // { file, name, objectUrl, thumbBlob, thumbUrl }
+  let generated = false;
+  let galleryInstance = null;
+
+  // ---- DOM ----
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("fileInput");
+  const photoList = document.getElementById("photoList");
+  const btnClear = document.getElementById("btnClear");
+  const btnGenerate = document.getElementById("btnGenerate");
+  const btnZip = document.getElementById("btnZip");
+  const btnCopy = document.getElementById("btnCopy");
+  const uploadStatus = document.getElementById("uploadStatus");
+  const genStatus = document.getElementById("genStatus");
+  const previewArea = document.getElementById("preview-area");
+  const codeOutput = document.getElementById("codeOutput");
+  const thumbSizeInput = document.getElementById("thumbSize");
+  const jpegQualityInput = document.getElementById("jpegQuality");
+  const namePrefixInput = document.getElementById("namePrefix");
+
+  // ---- Upload handling ----
+  dropzone.addEventListener("click", () => fileInput.click());
+  dropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropzone.classList.add("dragover");
+  });
+  dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+  dropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropzone.classList.remove("dragover");
+    addFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener("change", () => {
+    addFiles(fileInput.files);
+    fileInput.value = "";
+  });
+
+  function addFiles(fileList) {
+    const incoming = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+    if (!incoming.length) {
+      uploadStatus.textContent = "Aucun fichier image valide.";
+      uploadStatus.className = "status err";
+      return;
+    }
+    const prefix = (namePrefixInput.value || "photo").replace(/[^a-zA-Z0-9_-]/g, "") || "photo";
+    const startIdx = files.length + 1;
+    incoming.forEach((file, i) => {
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace("jpeg", "jpg");
+      const safeExt = ["jpg", "png", "webp", "gif"].includes(ext) ? ext : "jpg";
+      const name = `${prefix}${startIdx + i}.${safeExt}`;
+      const objectUrl = URL.createObjectURL(file);
+      files.push({ file, name, objectUrl, thumbBlob: null, thumbUrl: null });
+    });
+    generated = false;
+    btnZip.disabled = true;
+    renderList();
+    updateButtons();
+    uploadStatus.textContent = `${files.length} photo(s) prête(s).`;
+    uploadStatus.className = "status ok";
+  }
+
+  function renderList() {
+    photoList.innerHTML = "";
+    files.forEach((item, idx) => {
+      const div = document.createElement("div");
+      div.className = "photo-item";
+      div.innerHTML = `
+        <img src="${item.objectUrl}" alt="${item.name}">
+        <span class="name">${item.name}</span>
+        <button type="button" class="remove" data-idx="${idx}" title="Retirer">×</button>
+      `;
+      photoList.appendChild(div);
+    });
+    photoList.querySelectorAll(".remove").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeFile(parseInt(btn.dataset.idx, 10));
+      });
+    });
+  }
+
+  function removeFile(idx) {
+    const item = files[idx];
+    if (item.objectUrl) URL.revokeObjectURL(item.objectUrl);
+    if (item.thumbUrl) URL.revokeObjectURL(item.thumbUrl);
+    files.splice(idx, 1);
+    generated = false;
+    btnZip.disabled = true;
+    renderList();
+    updateButtons();
+    uploadStatus.textContent = files.length ? `${files.length} photo(s).` : "";
+    uploadStatus.className = "status";
+    if (!files.length) {
+      previewArea.innerHTML = '<p class="empty">Importez des photos puis cliquez sur « Générer » pour voir l’aperçu.</p>';
+      codeOutput.innerHTML = "<code>// Le code apparaîtra ici après génération…</code>";
+    }
+  }
+
+  btnClear.addEventListener("click", () => {
+    files.forEach((item) => {
+      if (item.objectUrl) URL.revokeObjectURL(item.objectUrl);
+      if (item.thumbUrl) URL.revokeObjectURL(item.thumbUrl);
+    });
+    files = [];
+    generated = false;
+    btnZip.disabled = true;
+    renderList();
+    updateButtons();
+    uploadStatus.textContent = "";
+    previewArea.innerHTML = '<p class="empty">Importez des photos puis cliquez sur « Générer » pour voir l’aperçu.</p>';
+    codeOutput.innerHTML = "<code>// Le code apparaîtra ici après génération…</code>";
+    if (galleryInstance && galleryInstance.destroy) galleryInstance.destroy();
+    galleryInstance = null;
+  });
+
+  function updateButtons() {
+    btnClear.disabled = files.length === 0;
+    btnGenerate.disabled = files.length === 0;
+  }
+
+  // ---- Thumbnail generation (Canvas) ----
+  function loadImage(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
+  async function makeThumb(item, size, quality) {
+    const img = await loadImage(item.objectUrl);
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    // cover crop
+    const scale = Math.max(size / img.width, size / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    const x = (size - w) / 2;
+    const y = (size - h) / 2;
+    ctx.drawImage(img, x, y, w, h);
+    const blob = await new Promise((res) =>
+      canvas.toBlob(res, "image/jpeg", quality)
+    );
+    if (item.thumbUrl) URL.revokeObjectURL(item.thumbUrl);
+    item.thumbBlob = blob;
+    item.thumbUrl = URL.createObjectURL(blob);
+    // force .jpg for thumbs
+    const base = item.name.replace(/\.[^.]+$/, "");
+    item.thumbName = base + ".jpg";
+    // also normalize main name to keep extension from original
+    return item;
+  }
+
+  // ---- Generate ----
+  btnGenerate.addEventListener("click", async () => {
+    if (!files.length) return;
+    btnGenerate.disabled = true;
+    genStatus.textContent = "Génération des miniatures…";
+    genStatus.className = "status";
+
+    const size = parseInt(thumbSizeInput.value, 10) || 150;
+    const quality = parseFloat(jpegQualityInput.value) || 0.85;
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        genStatus.textContent = `Miniature ${i + 1}/${files.length}…`;
+        await makeThumb(files[i], size, quality);
+      }
+      generated = true;
+      btnZip.disabled = false;
+      genStatus.textContent = `✓ ${files.length} miniature(s) générée(s).`;
+      genStatus.className = "status ok";
+      buildPreview();
+      buildCode();
+    } catch (err) {
+      console.error(err);
+      genStatus.textContent = "Erreur lors de la génération des miniatures.";
+      genStatus.className = "status err";
+    }
+    btnGenerate.disabled = false;
+  });
+
+  // ---- Inject gallery CSS/JS for live preview ----
+  function ensureGalleryAssets() {
+    if (!document.getElementById("pg-gallery-style")) {
+      const style = document.createElement("style");
+      style.id = "pg-gallery-style";
+      style.textContent = window.__GALLERY_CSS || "";
+      document.head.appendChild(style);
+    }
+    if (!window.PhotoGallery && window.__GALLERY_JS) {
+      const s = document.createElement("script");
+      s.textContent = window.__GALLERY_JS;
+      document.body.appendChild(s);
+    }
+  }
+
+  function buildPreview() {
+    ensureGalleryAssets();
+    if (galleryInstance && galleryInstance.destroy) {
+      try { galleryInstance.destroy(); } catch (_) {}
+    }
+    // Build object URLs for full images - gallery expects path-like names
+    // We'll use a custom approach: create a temporary gallery with blob URLs
+    // by overriding paths via a data structure
+
+    const names = files.map((f) => f.name);
+    previewArea.innerHTML = '<div id="gallery-preview" class="pg-gallery"></div>';
+
+    // PhotoGallery uses photosPath + name. We need blob URLs.
+    // Patch: create a map and monkey-patch or use data URLs.
+    // Simpler: inject images with blob URLs by creating a custom init.
+
+    const container = document.getElementById("gallery-preview");
+    // Build custom gallery HTML that uses blob URLs directly
+    const photosPath = ""; // we'll use full blob urls as "names"
+    // Actually easiest: temporarily map names to blob URLs via a custom PhotoGallery options
+    // The gallery concatenates photosPath + name. So if we set photosPath to "" and
+    // pass objectUrls as "photos", it works if objectUrl is used as name... but thumbs too.
+
+    // Custom lightweight preview using the same component with blob URLs:
+    const photoUrls = files.map((f) => f.objectUrl);
+    const thumbUrls = files.map((f) => f.thumbUrl);
+
+    // We'll instantiate PhotoGallery with empty paths and pass full URLs as photo names
+    // by setting photosPath and thumbsPath to empty and photos to full blob URLs.
+    // Thumbnails need separate handling - the gallery uses thumbsPath + same filename.
+    // So we need same "name" for both. Solution: use a virtual name and intercept...
+    // Easier: rebuild gallery DOM manually for preview OR patch the class.
+
+    // Practical approach: create PhotoGallery with photos = files.map(f => f.name)
+    // and photosPath / thumbsPath empty, then AFTER init, replace img src with blobs.
+    if (typeof PhotoGallery === "undefined") {
+      previewArea.innerHTML = '<p class="empty">Erreur : script galerie non chargé.</p>';
+      return;
+    }
+
+    galleryInstance = new PhotoGallery(container, {
+      photos: files.map((f) => f.name),
+      photosPath: "photos/",
+      thumbsPath: "photos/thumbs/",
+    });
+
+    // Replace sources with blobs
+    const mainImgs = container.querySelectorAll(".pg-slide img");
+    mainImgs.forEach((img, i) => {
+      if (files[i]) img.src = files[i].objectUrl;
+    });
+    const thumbImgs = container.querySelectorAll(".pg-thumb img");
+    thumbImgs.forEach((img, i) => {
+      if (files[i]) img.src = files[i].thumbUrl;
+    });
+    // Lightbox images will still try photos/ path - fix on open by patching
+    if (galleryInstance.lightbox) {
+      const origOpen = galleryInstance.openLightbox.bind(galleryInstance);
+      galleryInstance.openLightbox = function (index) {
+        origOpen(index);
+        if (files[index]) {
+          galleryInstance.lbImg.src = files[index].objectUrl;
+        }
+      };
+      // Also fix nav inside lightbox
+      const origLbPrev = galleryInstance.lbPrev.bind(galleryInstance);
+      const origLbNext = galleryInstance.lbNext.bind(galleryInstance);
+      galleryInstance.lbPrev = function () {
+        origLbPrev();
+        if (files[galleryInstance.current]) {
+          galleryInstance.lbImg.src = files[galleryInstance.current].objectUrl;
+        }
+      };
+      galleryInstance.lbNext = function () {
+        origLbNext();
+        if (files[galleryInstance.current]) {
+          galleryInstance.lbImg.src = files[galleryInstance.current].objectUrl;
+        }
+      };
+    }
+  }
+
+  function buildCode() {
+    const names = files.map((f) => f.name);
+    const list = JSON.stringify(names);
+    const html = `<!-- Photo Gallery Slide -->
+<link rel="stylesheet" href="css/gallery.css">
+
+<div
+  class="pg-gallery"
+  data-photos='${list}'
+></div>
+
+<script src="js/gallery.js"><\/script>`;
+
+    codeOutput.textContent = html;
+  }
+
+  btnCopy.addEventListener("click", async () => {
+    const text = codeOutput.textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      btnCopy.textContent = "Copié !";
+      setTimeout(() => (btnCopy.textContent = "Copier"), 1500);
+    } catch {
+      // fallback
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      btnCopy.textContent = "Copié !";
+      setTimeout(() => (btnCopy.textContent = "Copier"), 1500);
+    }
+  });
+
+  // ---- ZIP download ----
+  btnZip.addEventListener("click", async () => {
+    if (!generated || !files.length) return;
+    if (typeof JSZip === "undefined") {
+      genStatus.textContent = "JSZip non chargé. Vérifiez votre connexion.";
+      genStatus.className = "status err";
+      return;
+    }
+    btnZip.disabled = true;
+    genStatus.textContent = "Création du ZIP…";
+    genStatus.className = "status";
+
+    try {
+      const zip = new JSZip();
+      const root = zip.folder("photo-gallery");
+
+      // CSS & JS
+      root.folder("css").file("gallery.css", window.__GALLERY_CSS || "");
+      root.folder("js").file("gallery.js", window.__GALLERY_JS || "");
+
+      // README
+      root.file("README.md", window.__GALLERY_README || "Photo Gallery Slide\n");
+
+      // index.html configured
+      const names = files.map((f) => f.name);
+      const list = JSON.stringify(names);
+      const indexHtml = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photo Gallery</title>
+  <link rel="stylesheet" href="css/gallery.css">
+  <style>
+    body { margin: 0; background: #1a1a1a; padding: 2rem 1rem; font-family: system-ui, sans-serif; }
+    h1 { text-align: center; color: #eee; font-size: 1.5rem; margin-bottom: 1.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Photo Gallery</h1>
+  <div class="pg-gallery" data-photos='${list}'></div>
+  <script src="js/gallery.js"><\/script>
+</body>
+</html>`;
+      root.file("index.html", indexHtml);
+
+      // Photos + thumbs
+      const photosFolder = root.folder("photos");
+      const thumbsFolder = photosFolder.folder("thumbs");
+
+      for (const item of files) {
+        const buf = await item.file.arrayBuffer();
+        photosFolder.file(item.name, buf);
+        if (item.thumbBlob) {
+          const tbuf = await item.thumbBlob.arrayBuffer();
+          // thumb always .jpg with same base name
+          const thumbFileName = item.name.replace(/\.[^.]+$/, "") + ".jpg";
+          // But gallery uses same filename as original - so if original is .png,
+          // thumbs/photo1.png won't exist. Our gallery.js uses same name.
+          // Fix: store thumb with EXACT same filename as the main photo.
+          thumbsFolder.file(item.name, tbuf);
+        }
+      }
+
+      const blob = await zip.generateAsync({ type: "blob" }, (meta) => {
+        genStatus.textContent = `ZIP ${Math.round(meta.percent)}%…`;
+      });
+
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "photo-gallery.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+
+      genStatus.textContent = "✓ ZIP téléchargé : photo-gallery.zip";
+      genStatus.className = "status ok";
+    } catch (err) {
+      console.error(err);
+      genStatus.textContent = "Erreur lors de la création du ZIP.";
+      genStatus.className = "status err";
+    }
+    btnZip.disabled = false;
+  });
+})();
+  </script>
+</body>
+</html>

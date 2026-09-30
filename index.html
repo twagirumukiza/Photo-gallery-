@@ -319,7 +319,7 @@
             <input type="number" id="jpegQuality" value="0.85" min="0.5" max="1" step="0.05">
           </label>
           <label>Préfixe nom
-            <input type="text" id="namePrefix" value="photo" placeholder="photo">
+            <input type="text" id="namePrefix" value="photo" placeholder="photo" style="width:120px" title="Ex: photo, img, vacances… → photo1.jpg, photo2.jpg">
           </label>
         </div>
         <div class="actions">
@@ -343,10 +343,10 @@
 
       <!-- Step 4: Code -->
       <div class="card full-width">
-        <h2><span class="step">4</span> Code à copier dans votre site</h2>
+        <h2><span class="step">4</span> Code autonome à coller dans votre page HTML</h2>
         <div class="code-wrap">
           <button type="button" class="btn-ghost copy-btn" id="btnCopy">Copier</button>
-          <pre id="codeOutput"><code>// Le code apparaîtra ici après génération…</code></pre>
+          <pre id="codeOutput"><code><!-- Le code autonome (CSS + HTML + JS) apparaîtra ici après génération… --></code></pre>
         </div>
       </div>
     </div>
@@ -394,6 +394,17 @@ window.__GALLERY_README = "# Photo Gallery Slide\n\nGalerie photo moderne, l\u00
   const jpegQualityInput = document.getElementById("jpegQuality");
   const namePrefixInput = document.getElementById("namePrefix");
 
+  namePrefixInput.addEventListener("input", () => {
+    if (!files.length) return;
+    generated = false;
+    btnZip.disabled = true;
+    applyPrefixNames();
+    uploadStatus.textContent = files.length
+      ? `${files.length} photo(s) — noms : ${sanitizePrefix()}1, ${sanitizePrefix()}2…`
+      : "";
+    uploadStatus.className = "status";
+  });
+
   // ---- Upload handling ----
   dropzone.addEventListener("click", () => fileInput.click());
   dropzone.addEventListener("dragover", (e) => {
@@ -418,15 +429,19 @@ window.__GALLERY_README = "# Photo Gallery Slide\n\nGalerie photo moderne, l\u00
       uploadStatus.className = "status err";
       return;
     }
-    const prefix = (namePrefixInput.value || "photo").replace(/[^a-zA-Z0-9_-]/g, "") || "photo";
-    const startIdx = files.length + 1;
-    incoming.forEach((file, i) => {
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace("jpeg", "jpg");
-      const safeExt = ["jpg", "png", "webp", "gif"].includes(ext) ? ext : "jpg";
-      const name = `${prefix}${startIdx + i}.${safeExt}`;
+    incoming.forEach((file) => {
       const objectUrl = URL.createObjectURL(file);
-      files.push({ file, name, objectUrl, thumbBlob: null, thumbUrl: null });
+      // name will be assigned by applyPrefixNames()
+      files.push({
+        file,
+        name: file.name,
+        originalName: file.name,
+        objectUrl,
+        thumbBlob: null,
+        thumbUrl: null,
+      });
     });
+    applyPrefixNames();
     generated = false;
     btnZip.disabled = true;
     renderList();
@@ -462,13 +477,13 @@ window.__GALLERY_README = "# Photo Gallery Slide\n\nGalerie photo moderne, l\u00
     files.splice(idx, 1);
     generated = false;
     btnZip.disabled = true;
-    renderList();
+    applyPrefixNames();
     updateButtons();
     uploadStatus.textContent = files.length ? `${files.length} photo(s).` : "";
     uploadStatus.className = "status";
     if (!files.length) {
       previewArea.innerHTML = '<p class="empty">Importez des photos puis cliquez sur « Générer » pour voir l’aperçu.</p>';
-      codeOutput.innerHTML = "<code>// Le code apparaîtra ici après génération…</code>";
+      codeOutput.innerHTML = "<code><!-- Le code autonome (CSS + HTML + JS) apparaîtra ici après génération… --></code>";
     }
   }
 
@@ -484,10 +499,25 @@ window.__GALLERY_README = "# Photo Gallery Slide\n\nGalerie photo moderne, l\u00
     updateButtons();
     uploadStatus.textContent = "";
     previewArea.innerHTML = '<p class="empty">Importez des photos puis cliquez sur « Générer » pour voir l’aperçu.</p>';
-    codeOutput.innerHTML = "<code>// Le code apparaîtra ici après génération…</code>";
+    codeOutput.innerHTML = "<code><!-- Le code autonome (CSS + HTML + JS) apparaîtra ici après génération… --></code>";
     if (galleryInstance && galleryInstance.destroy) galleryInstance.destroy();
     galleryInstance = null;
   });
+
+  function sanitizePrefix() {
+    return (namePrefixInput.value || "photo").replace(/[^a-zA-Z0-9_-]/g, "") || "photo";
+  }
+
+  function applyPrefixNames() {
+    const prefix = sanitizePrefix();
+    files.forEach((item, i) => {
+      const src = item.originalName || item.file.name || item.name;
+      const ext = (src.split(".").pop() || "jpg").toLowerCase().replace("jpeg", "jpg");
+      const safeExt = ["jpg", "png", "webp", "gif"].includes(ext) ? ext : "jpg";
+      item.name = prefix + (i + 1) + "." + safeExt;
+    });
+    renderList();
+  }
 
   function updateButtons() {
     btnClear.disabled = files.length === 0;
@@ -534,6 +564,8 @@ window.__GALLERY_README = "# Photo Gallery Slide\n\nGalerie photo moderne, l\u00
   btnGenerate.addEventListener("click", async () => {
     if (!files.length) return;
     btnGenerate.disabled = true;
+    // Appliquer le préfixe actuel avant génération / export
+    applyPrefixNames();
     genStatus.textContent = "Génération des miniatures…";
     genStatus.className = "status";
 
@@ -662,17 +694,30 @@ window.__GALLERY_README = "# Photo Gallery Slide\n\nGalerie photo moderne, l\u00
   function buildCode() {
     const names = files.map((f) => f.name);
     const list = JSON.stringify(names);
-    const html = `<!-- Photo Gallery Slide -->
-<link rel="stylesheet" href="css/gallery.css">
+    const css = window.__GALLERY_CSS || "";
+    const js = window.__GALLERY_JS || "";
+
+    // Code 100 % autonome : CSS + HTML + JS à coller dans n'importe quelle page
+    const snippet = `<!-- ===== Photo Gallery Slide (autonome) =====
+  Placez vos images dans /photos/ et les miniatures dans /photos/thumbs/
+  (mêmes noms de fichiers que dans data-photos ci-dessous).
+  Puis collez tout ce bloc dans votre page HTML.
+-->
+<style>
+${css}
+</style>
 
 <div
   class="pg-gallery"
   data-photos='${list}'
 ></div>
 
-<script src="js/gallery.js"><\/script>`;
+<script>
+${js}
+</script>
+<!-- ===== Fin Photo Gallery Slide ===== -->`;
 
-    codeOutput.textContent = html;
+    codeOutput.textContent = snippet;
   }
 
   btnCopy.addEventListener("click", async () => {
